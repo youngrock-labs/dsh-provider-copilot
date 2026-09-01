@@ -155,12 +155,47 @@
 - Consider exposing `getRemoteModelIds()` (unfiltered) as a debug helper for
   the Phase 4 `/copilot status` command.
 
-## Phase 4: Commands & entry point (0.5 day)
+## Phase 4: Commands & entry (`src/commands/`) (0.5 day) — DONE
 
-- [ ] `/copilot login|logout|status` (status shows auth source, token expiry,
-      model count, p50/p95 over the last 10 calls).
-- [ ] Plugin entry: register provider + commands, clean up via `ctx.effect`,
-      lazily initialize the client.
+- [x] `/copilot login | logout | status` implemented in
+      `src/commands/commands.ts`. `login` streams the Device Flow user code
+      via an `onCode` callback so shells can print it without blocking the
+      auth manager; `logout` wipes memory, disk cache, model cache, and the
+      metrics ring; `status` reports auth source, token expiry (`expiresInSeconds`),
+      SKU, model count, and p50/p95 over the last N calls.
+- [x] `status` never throws: `/models` failure surfaces as `modelCount = null`,
+      so `/copilot status` still renders when the network is down.
+- [x] `formatStatus()` produces a shell-friendly one-liner (e.g.
+      `copilot: ok (cache sku=individual) expires_in=29m models=57 p50=200ms p95=350ms (n=10)`).
+- [x] `MetricsRing` (`src/commands/metrics.ts`): capacity-bounded, ok-only p50/p95,
+      nearest-rank percentile (small N ⇒ no interpolation needed).
+- [x] `MeteredProvider` (`src/commands/meteredProvider.ts`) wraps
+      `CopilotProvider.stream` to record latency, ok/err, `errorCode` (from
+      thrown `ClientError.code`), and usage tokens. `listModels` is delegated
+      untouched to avoid double-counting.
+- [x] Plugin entry `registerCopilot(ctx, opts?)` in `src/commands/entry.ts`
+      wires `AuthManager → CopilotClient → CopilotProvider → MeteredProvider`,
+      lazily via `getBearer` closure (no auth is touched until first request).
+- [x] Command handlers are shell-agnostic (`{ args, signal, println }`);
+      the entry translates dsh's ctx shape to that surface. dsh runtime is not
+      a hard dependency — the plugin binds by shape.
+- [x] `ctx.effect(dispose)` registered so dsh calls our cleanup on unload
+      (invalidates models cache, clears metrics ring).
+- [x] Unit tests (`test/commands/*.test.ts`, 17 tests): ring capacity + percentile
+      edge cases, MeteredProvider ok/err recording + errorCode mapping,
+      status with & without session, `/models` failure fallback,
+      `formatStatus` shape, entry registers provider + command, unknown
+      subcommand usage, disposer registration.
+- [x] Public API re-exported via `src/commands/index.ts` → `src/index.ts`.
+
+### Phase 4 known follow-ups (deferred, not blocking Phase 5)
+
+- Rendering `expiresInSeconds` in the CLI uses a coarse `h`/`m` format;
+  Phase 5 will emit structured events so a richer UI can format its own way.
+- `/copilot status` does not currently show endpoint hostnames; Phase 5
+  status will include them under a verbose flag.
+- `login` prints the user code via `println`; a future improvement is to
+  optionally open the browser (opt-in — must not be default on servers).
 
 ## Phase 5: Observability (0.5 day)
 
