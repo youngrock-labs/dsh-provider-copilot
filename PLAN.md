@@ -197,12 +197,49 @@
 - `login` prints the user code via `println`; a future improvement is to
   optionally open the browser (opt-in — must not be default on servers).
 
-## Phase 5: Observability (0.5 day)
+## Phase 5: Observability (`src/observability/`) (0.5 day) — DONE
 
-- [ ] JSONL logs under `~/.config/dsh/copilot/log/` (0700, 7-day rotation).
-- [ ] Fields: `requestId` / `model` / `tokens` / `latencyMs` / `errorCode`.
-- [ ] **Never log: messages, body, headers, tokens, full error bodies.**
-- [ ] In-memory ring buffer of the last 10 calls for `/copilot status`.
+- [x] JSONL logs at `~/.config/dsh/copilot/log/copilot-YYYY-MM-DD.jsonl`,
+      files 0600 / dir 0700 (matches auth cache perms). Daily rotation is
+      implicit in the file-name-per-UTC-day scheme.
+- [x] 7-day retention (`retentionDays`, default 7): older files pruned lazily
+      on the first write of a new UTC day. Prune failures are swallowed;
+      logging can never take the plugin down.
+- [x] Strict field allowlist enforced by `assertLogSafe(record)` — throwing
+      when any disallowed field is present. Emitted fields are exactly
+      `{ ts, requestId, event, model, latencyMs, promptTokens,
+      completionTokens, totalTokens, errorCode, source, sku }`.
+- [x] **Never log** messages, request/response bodies, headers, tokens, or
+      full error bodies — verified by a negative test that tries to sneak in
+      `body` / `headers` / `token` / `authorization` and expects `write()` to
+      refuse (via `lastError`).
+- [x] `MeteredProvider` (Phase 4) now integrates the logger: `stream_start`
+      at generator entry, `stream_end` or `stream_error` in `finally` with
+      `latencyMs`, `errorCode`, and usage totals. Writes are ordered
+      (`await startWrite` before end-write) so consumers see events in
+      chronological order.
+- [x] `registerCopilot` constructs a `JsonlLogger` by default; opt-out via
+      `RegisterOptions.disableLog` or `DSH_COPILOT_NO_LOG=1`. `auth_login` /
+      `auth_logout` events are emitted on the corresponding commands.
+- [x] In-memory ring buffer of the last N calls remains the source for
+      `/copilot status`'s p50 / p95 (Phase 4); JSONL is the durable trail.
+- [x] Unit tests (`test/observability/*.test.ts`, 11 tests): allowlist
+      enforcement (including refusing `body`/`headers`/`token`/`authorization`),
+      UTC day-key formatting, file mode 0600 / dir mode 0700, I/O errors
+      surfaced only via `lastError`, retention pruning, `disabled=true`
+      no-op, and integration with `MeteredProvider` covering both success
+      (usage in `stream_end`) and failure (errorCode in `stream_error`).
+- [x] Public API re-exported via `src/observability/index.ts` → `src/index.ts`.
+
+### Phase 5 known follow-ups (deferred, not blocking Phase 6)
+
+- Batching writer (`flush()` is a no-op placeholder). Fine at current volume
+  (~1 line/call); revisit if we ever tail-load a persistent worker.
+- `auth_refresh` event is defined in the record type but not yet emitted by
+  `AuthManager.refresh` — Phase 6 will attach it once fixtures cover token
+  churn.
+- Log-file compaction / gzip past N days. Retention prunes are enough for
+  MVP; consider if disk becomes a concern.
 
 ## Phase 6: Test & release (1.5 days)
 

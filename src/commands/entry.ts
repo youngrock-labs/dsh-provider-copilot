@@ -18,6 +18,7 @@ import { CopilotProvider } from "../provider/copilotProvider.js";
 import { MetricsRing } from "./metrics.js";
 import { MeteredProvider } from "./meteredProvider.js";
 import { login, logout, status, formatStatus } from "./commands.js";
+import { JsonlLogger, newRequestId } from "../observability/index.js";
 
 export interface DshCommandCtx {
     args: string[];
@@ -41,6 +42,10 @@ export interface RegisterOptions {
     now?: () => number;
     /** Injectable fetch for tests. */
     fetchImpl?: typeof fetch;
+    /** Override the JSONL logger (e.g. disabled in tests). */
+    logger?: JsonlLogger;
+    /** If true, disables JSONL logging entirely. Defaults to `DSH_COPILOT_NO_LOG=1`. */
+    disableLog?: boolean;
 }
 
 export interface RegisterHandle {
@@ -48,6 +53,7 @@ export interface RegisterHandle {
     client: CopilotClient;
     provider: MeteredProvider;
     metrics: MetricsRing;
+    logger: JsonlLogger;
     dispose: () => void;
 }
 
@@ -71,9 +77,17 @@ export function registerCopilot(ctx: DshRegistrationCtx, opts: RegisterOptions =
         now,
     });
 
+    const disabled = opts.disableLog ?? process.env.DSH_COPILOT_NO_LOG === "1";
+    const logger =
+        opts.logger ??
+        new JsonlLogger({
+            disabled,
+            now,
+        });
+
     const metrics = new MetricsRing(opts.metricsCapacity ?? 10);
     const raw = new CopilotProvider({ client });
-    const provider = new MeteredProvider(raw, metrics, now);
+    const provider = new MeteredProvider(raw, metrics, { now, logger });
     const deps = { auth, client, metrics, now };
 
     ctx.registerProvider(provider);
@@ -90,14 +104,22 @@ export function registerCopilot(ctx: DshRegistrationCtx, opts: RegisterOptions =
                 try {
                     const res = await login(deps, onCode, cctx.signal);
                     cctx.println(`logged in. endpoints.api=${res.endpoints.api}`);
+                    void logger.write({ ts: "", requestId: newRequestId(), event: "auth_login" });
                 } catch (e) {
                     cctx.println(`login failed: ${(e as Error).message}`);
+                    void logger.write({
+                        ts: "",
+                        requestId: newRequestId(),
+                        event: "stream_error",
+                        errorCode: (e as { code?: string })?.code ?? (e as Error).name,
+                    });
                 }
                 return;
             }
             case "logout": {
                 await logout(deps);
                 cctx.println("logged out");
+                void logger.write({ ts: "", requestId: newRequestId(), event: "auth_logout" });
                 return;
             }
             case "status":
@@ -117,5 +139,5 @@ export function registerCopilot(ctx: DshRegistrationCtx, opts: RegisterOptions =
     };
     ctx.effect?.(dispose);
 
-    return { auth, client, provider, metrics, dispose };
+    return { auth, client, provider, metrics, logger, dispose };
 }
