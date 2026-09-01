@@ -116,15 +116,44 @@
 - Consider `Retry-After: <http-date>` fuzz tests once we see live 429s in
   Phase 7 rollout data.
 
-## Phase 3: Provider `provider.ts` (1 day)
+## Phase 3: Provider (`src/provider/`) (1 day) — DONE
 
-- [ ] Implement dsh `LlmProvider`: `id` / `listModels` / `stream`.
-- [ ] Forward `messages` structurally (**no string concatenation**); do not send `tools`.
-- [ ] `delta.content` → text chunk; `delta.reasoning_content` → reasoning chunk.
-- [ ] Wire `AbortSignal` straight through to `fetch`.
-- [ ] Model set = remote `/models` ∩ local whitelist (whitelist carries context
-      window, reasoning support, and other metadata).
-- [ ] Unit tests: forwarding, abort, intersection, aliases.
+- [x] `CopilotProvider` implements the dsh `LlmProvider` interface
+      (`id` / `listModels` / `stream`). Interface is declared locally in
+      `src/provider/dshInterface.ts` — no runtime dep on dsh; dsh loads by shape.
+- [x] `messages` forwarded structurally (mapped 1:1 to
+      `{ role, content, name? }`). Verified by test: request payload equals
+      the input array; no string concatenation on any path.
+- [x] Never sends `tools` / `tool_choice`; verified by negative assertion in
+      the forwarding test.
+- [x] `delta.content` → `{ type: "text" }`; `delta.reasoning_content` →
+      `{ type: "reasoning" }`; a final `{ type: "finish", reason?, usage? }`
+      is always emitted so dsh can settle its rendering.
+- [x] `AbortSignal` passed straight through to `CopilotClient.streamChatCompletions`
+      (identity-equal, verified in test).
+- [x] Model set = remote `/models` ∩ local whitelist (`DEFAULT_WHITELIST`).
+      Whitelist entries carry `contextWindow`, `maxOutputTokens`, `family`,
+      `reasoning`, optional `vision`. Aliases collapse dated snapshots
+      (e.g. `gpt-4o-2024-11-20` → canonical `gpt-4o`) to a single row.
+- [x] Fallback: empty intersection exposes raw remote ids as `{ id }` so
+      brand-new accounts aren't hard-locked; opt-out via
+      `fallbackToRemoteOnEmpty: false`.
+- [x] Unit tests (`test/provider/*.test.ts`, 16 tests): intersection, alias
+      resolution, custom whitelist, structural forwarding, no-tools guarantee,
+      reasoning mapping, abort passthrough, alias-to-canonical model id on
+      the outgoing request, finish + usage propagation, upstream error surfacing.
+- [x] Public API re-exported via `src/provider/index.ts` → `src/index.ts`.
+
+### Phase 3 known follow-ups (deferred, not blocking Phase 4)
+
+- Whitelist metadata (context window / max output) is currently a static
+  best-guess; revisit after Phase 6 fixtures when we can read real 400
+  responses at edge sizes.
+- No `usage` accumulation for streams where upstream splits it across chunks;
+  we take the last one wins. Fine for observability; may need summation if
+  dsh wants per-token billing.
+- Consider exposing `getRemoteModelIds()` (unfiltered) as a debug helper for
+  the Phase 4 `/copilot status` command.
 
 ## Phase 4: Commands & entry point (0.5 day)
 
