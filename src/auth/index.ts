@@ -1,0 +1,10 @@
+export { AuthManager } from "./manager.js";
+export type { AuthManagerOptions, AuthStatus } from "./manager.js";
+export { AuthStore, defaultCacheDir } from "./store.js";
+export { AuthError, type AuthErrorCode } from "./errors.js";
+export { COPILOT_OAUTH_CLIENT_ID, startDeviceFlow, pollForToken } from "./deviceFlow.js";
+export type { DeviceCode } from "./deviceFlow.js";
+export { exchangeCopilotToken } from "./tokenExchange.js";
+export type { CopilotSession, CopilotEndpoints } from "./tokenExchange.js";
+export { resolveToken } from "./sources.js";
+export type { ResolvedToken, TokenSource, TokenKind } from "./sources.js";

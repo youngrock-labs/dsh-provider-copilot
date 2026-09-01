@@ -37,30 +37,50 @@
   UA and `client_id` allowlists may tighten at any time. The README must clearly state
   this is not a GitHub-supported path.
 
-## Phase 0: New repository (0.5 day)
+## Phase 0: New repository (0.5 day) — DONE
 
-- [ ] Create a standalone git repository (e.g. `dsh-provider-copilot`); do not fork
-      the old repo. Archive the old repo as read-only.
-- [ ] Initialize from scratch: `package.json`, `tsconfig.json`, `eslint`, `.gitignore`,
-      MIT LICENSE.
-- [ ] `engines.node = ">=20.10.0"`. Do not depend on `@github/copilot` / `koffi` /
-      `allowScripts` / `prepare` build scripts.
-- [ ] Directory skeleton: `.pi/extensions/copilot/`, `src/{auth,client,provider}.ts`,
-      `test/`.
+- [x] Standalone git repo initialized.
+- [x] From-scratch `package.json`, `tsconfig.json`, `eslint.config.mjs`, `.gitignore`, MIT LICENSE.
+- [x] `engines.node = ">=20.10.0"`; no `@github/copilot` / `koffi` / `allowScripts` /
+      `prepare` scripts.
+- [x] Skeleton: `.pi/extensions/copilot/`, `src/{auth,client,provider}.ts`, `test/`.
 
-## Phase 1: Auth `auth.ts` (1.5 days)
+## Phase 1: Auth (`src/auth/`) (1.5 days) — DONE
 
-- [ ] Full Device Flow state machine: `authorization_pending` / `slow_down` /
-      `expired_token` / `access_denied`.
-- [ ] Exchange GitHub token for Copilot token; cache under `~/.config/dsh/copilot/`
-      (directory 0700, files 0600).
-- [ ] Separate token types: `COPILOT_TOKEN` (bearer) vs `COPILOT_GITHUB_TOKEN`
-      (used for exchange).
-- [ ] Source priority: BYOK → `COPILOT_TOKEN` → `COPILOT_GITHUB_TOKEN` → OAuth cache
-      → `gh` `hosts.yml` → `GH_TOKEN` / `GITHUB_TOKEN` (off by default, opt-in).
-- [ ] Refresh policy: blocking refresh when remaining lifetime < 2 min; background
-      pre-refresh 5 min before expiry; deduplicate concurrent refreshes.
-- [ ] Unit tests: priority, state machine, concurrent refresh, cache permissions.
+- [x] Full Device Flow state machine: `authorization_pending` (poll again) /
+      `slow_down` (interval +5s per spec) / `expired_token` (→ `device_flow_expired`) /
+      `access_denied` (→ `device_flow_denied`) / client-side timeout
+      (→ `device_flow_timeout`). Implemented in `src/auth/deviceFlow.ts`.
+- [x] Exchange GitHub token → Copilot token via `copilot_internal/v2/token`,
+      caching at `~/.config/dsh/copilot/` (dir 0700, files 0600, atomic writes
+      via `O_CREAT|O_EXCL|0600` + rename). Implemented in `src/auth/store.ts` +
+      `src/auth/tokenExchange.ts`.
+- [x] Token-kind separation: `COPILOT_TOKEN` (bearer, skips exchange) vs
+      `COPILOT_GITHUB_TOKEN` (drives exchange). Enforced in `src/auth/sources.ts`
+      and honored by `AuthManager.doRefresh`.
+- [x] Source priority: `BYOK` → `env COPILOT_TOKEN` → `env COPILOT_GITHUB_TOKEN`
+      → OAuth cache → `gh` `hosts.yml` (opt-in `DSH_COPILOT_ALLOW_GH_HOSTS=1`)
+      → `GH_TOKEN`/`GITHUB_TOKEN` (opt-in `DSH_COPILOT_ALLOW_ENV_GH=1`).
+      Implemented in `src/auth/sources.ts::resolveToken`.
+- [x] Refresh policy: blocking refresh when remaining lifetime < 2 min;
+      opportunistic background refresh when < 5 min; concurrent refreshes
+      deduplicated to a single in-flight promise (`AuthManager.inflightRefresh`).
+- [x] Pinned Copilot User-Agent + editor headers (`src/auth/headers.ts`) — matches
+      Phase -1 finding that non-Copilot UAs are 403'd by api.github.com.
+- [x] Unit tests (`test/auth/*.test.ts`): priority chain, Device Flow state machine
+      + slow_down backoff + deadline enforcement, token-exchange 401/403/success/
+      missing-endpoints, cache 0600/0700 permissions + idempotent clear, refresh
+      concurrency dedup, blocking near-expiry refresh, logout wipe.
+- [x] Public API re-exported from `src/index.ts` via `src/auth/index.ts` barrel.
+
+### Phase 1 known follow-ups (deferred, not blocking Phase 2)
+
+- Add a `--yes` / non-interactive login mode once dsh command shell semantics are
+  confirmed (Phase 4).
+- Persist `sessionSource` alongside `session.json` so `status` reports the origin
+  after a cold restart (currently reports `cache` on warm-load).
+- Encrypt cache files at rest if/when we support shared workstations (out of scope
+  for MVP; documented in README's non-public API notice).
 
 ## Phase 2: HTTP client `client.ts` (2 days)
 
