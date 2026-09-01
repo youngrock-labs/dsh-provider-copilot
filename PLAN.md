@@ -82,16 +82,39 @@
 - Encrypt cache files at rest if/when we support shared workstations (out of scope
   for MVP; documented in README's non-public API notice).
 
-## Phase 2: HTTP client `client.ts` (2 days)
+## Phase 2: HTTP client (`src/client/`) (2 days) — DONE
 
-- [ ] `listModels()` (5 min TTL), `chatCompletionsStream(req, signal)`.
-- [ ] SSE parsing must cover: fragmented data, CRLF, blank lines, `[DONE]`,
-      UTF-8 split across chunks, non-JSON lines, disconnects.
-- [ ] Layered timeouts: connect / first-byte / idle / total, distinguishable error codes.
-- [ ] Single retry with backoff on 429 + `Retry-After`.
-- [ ] `redactSecrets()`: Bearer, GitHub PATs, Copilot semicolon-token
-      (`tid=` / `exp=` ...), `Authorization` values.
-- [ ] Unit tests: every SSE branch, redact, abort, timeouts.
+- [x] `CopilotClient.listModels()` with 5-min TTL cache + in-flight dedup
+      (`invalidateModels()` for tests / manual refresh).
+- [x] `CopilotClient.streamChatCompletions(req, signal)` returns an
+      `AsyncGenerator<ChatCompletionChunk>`; always sends `stream: true`.
+- [x] SSE parser (`src/client/sse.ts`) covers: fragmented `data:` payloads,
+      CRLF/LF line endings, blank lines as event separators, `[DONE]` sentinel,
+      UTF-8 code points split across chunks (`TextDecoder({stream:true})`),
+      non-JSON `data:` lines skipped, comment / keep-alive lines (`: ...`)
+      skipped, clean termination without `[DONE]`, empty stream.
+- [x] Layered timeouts (`src/client/http.ts`): `connectMs`, `firstByteMs`,
+      `idleMs`, `totalMs`; each maps to a distinguishable `ClientError.code`.
+- [x] Single retry on 429 with `Retry-After` (seconds or HTTP-date); a second
+      429 surfaces as-is.
+- [x] `redactSecrets()` covers Bearer, `token <t>` header form, `gh[pou s r]_*`,
+      legacy 40-hex PATs, and Copilot semicolon-token bodies.
+- [x] Base URL always derived from `getBearer().endpoints.api` — never hardcoded.
+- [x] Unit tests (`test/client/*.test.ts`, 30 tests): SSE across all branches
+      including UTF-8 split, redact rules, 429 retry-once behavior, timeouts
+      (connect/first-byte/idle), caller-abort mapping, network-error mapping,
+      list-models cache + invalidation, stream `stream:true` enforcement, HTTP
+      4xx surfacing before the generator yields.
+- [x] Public API re-exported via `src/client/index.ts` → `src/index.ts`.
+
+### Phase 2 known follow-ups (deferred, not blocking Phase 3)
+
+- Wire `totalMs` into the streaming reader (currently only enforced at
+  connect + retry; long streams can outlast it silently).
+- Emit a `metrics` event on malformed SSE frames so the observability layer
+  (Phase 5) can surface parser drops.
+- Consider `Retry-After: <http-date>` fuzz tests once we see live 429s in
+  Phase 7 rollout data.
 
 ## Phase 3: Provider `provider.ts` (1 day)
 
