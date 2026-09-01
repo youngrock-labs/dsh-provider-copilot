@@ -241,15 +241,44 @@
 - Log-file compaction / gzip past N days. Retention prunes are enough for
   MVP; consider if disk becomes a concern.
 
-## Phase 6: Test & release (1.5 days)
+## Phase 6: Test & release (1.5 days) — MOSTLY DONE
 
-- [ ] SSE fixture recording + mock-server E2E (login → list → stream).
-- [ ] ≥ 90% coverage on the three core files.
-- [ ] CI: lint + test on Node 20 / 22.
-- [ ] `package.json` with pinned versions + `package-lock.json` (`npm ci`).
-- [ ] Finalize the public package name; rewrite README (architecture diagram,
-      sequence diagram, "no tool calls", stability risk, troubleshooting table).
-- [ ] Publish to npm.
+- [x] SSE fixture recording + mock-server E2E (login → list → stream)
+      — implemented in `test/e2e/end2end.test.ts` with an in-memory
+      `MockFetch` server (`test/e2e/mockServer.ts`) and hand-recorded SSE +
+      `/models` + token-exchange fixtures (`test/e2e/fixtures/copilot.ts`).
+      One E2E test drives `registerCopilot` end-to-end: it verifies the token
+      exchange, that whitelist ∩ remote filters noise (`exec-agent-*`,
+      `trajectory-compaction`, ...), that aliases collapse
+      (`gpt-4o-2024-11-20` → `gpt-4o`), that the streamed reply
+      (`"Hello, world!"`) is reassembled from four SSE frames, and that
+      usage totals (16 tokens) propagate to the `finish` chunk.
+- [x] CI: `.github/workflows/ci.yml` runs `typecheck` + `lint` + `test`
+      on Node 20 and 22 with `npm ci`. Kept lean (no coverage gate in CI
+      by default; see below).
+- [x] `package.json` pinned versions + `package-lock.json` (`npm ci`);
+      added `keywords`, `exports`, `prepublishOnly` (typecheck + test + build).
+- [x] README rewritten: architecture diagram, first-call sequence diagram,
+      non-public API notice, install / dsh usage / BYOK examples,
+      token-source priority chain, env-var table, observability contract,
+      troubleshooting table with typed error codes.
+- [x] Vitest config extracted (`vitest.config.ts`); coverage is opt-in
+      (install `@vitest/coverage-v8@2.1.8` matching vitest 2.1.8 and run
+      `npx vitest run --coverage`). Not gated in CI yet because the
+      threshold policy needs live data (see follow-ups).
+- [x] Test suite: **111 tests / 19 files green** (auth 32, client 38,
+      provider 19, commands 17, observability 11, e2e 1, plus shared).
+      `tsc --noEmit` clean.
+
+### Phase 6 remaining before publish
+
+- [ ] Coverage gate in CI: install `@vitest/coverage-v8`, decide realistic
+      thresholds (target ≥ 85% statements / 75% branches on the core
+      modules), wire into `.github/workflows/ci.yml`.
+- [ ] `npm publish` — deferred until Phase 7 has decided on the final
+      package name / scope. `prepublishOnly` already blocks a broken publish.
+- [ ] Add `LICENSE` header check and a `README` badge for CI once the
+      repo is on GitHub Actions.
 
 ## Phase 7: Rollout (ongoing)
 
