@@ -2,8 +2,6 @@
 
 Bridge a **GitHub Copilot subscription** into **DeepSeek Harness (dsh)** as a plain LLM provider.
 
-Status: **Phase 6 (release prep)** — plugin surface is complete; final packaging & rollout in progress. See `PLAN.md`.
-
 ---
 
 ## Scope
@@ -88,12 +86,12 @@ Additional compliance notes:
 ## Install
 
 ```bash
-npm install dsh-provider-copilot
+# install from GitHub:
+dsh plugin --profile <your-profile> add github:youngrock-labs/dsh-provider-copilot
+# install from a local checkout:
+dsh plugin --profile <your-profile> add /absolute/path/to/dsh-provider-copilot
 ```
-
-dsh discovers the plugin under `.pi/extensions/copilot/` and calls
-`registerCopilot(ctx)` on startup. There is no runtime dependency on dsh
-itself; the plugin binds by shape.
+Restart dsh to load the plugin.
 
 ## Usage — inside dsh
 
