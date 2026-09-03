@@ -21,6 +21,13 @@
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
+        },
+        "./cordis.patch.yml": "./cordis.patch.yml",
+        "./package.json": "./package.json"
+    },
+    "dsh": {
+        "bundle": {
+            "patch": "cordis.patch.yml"
         }
     },
     "scripts": {
@@ -35,6 +42,7 @@
     "files": [
         "dist/**/*",
         ".pi/**/*",
+        "cordis.patch.yml",
         "README.md",
         "LICENSE"
     ],

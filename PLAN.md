@@ -1,5 +1,53 @@
 # Copilot → dsh Provider Roadmap
 
+> **Status (latest):** the real dsh integration layer (tracked below as
+> "Phase 8") is implemented in `src/plugin/`. The full design with dsh
+> source anchors lives in `INTEGRATION.md`; this file tracks checklist
+> state only. All comments and docs are English.
+
+## Phase 8: Real dsh integration (see INTEGRATION.md) — IN PROGRESS
+
+The original Phases 0–7 were written against an assumed dsh extension API
+that does not exist. dsh (deepseek-harness) drives LLM providers through
+cordis plugin packages that register an adapter on `ctx.llm`. Phase 8 closes
+that gap.
+
+- [x] INTEGRATION.md — integration plan anchored to dsh source (adapter
+      contract, chunk protocol, bundle mount path, picker/Models page,
+      commands, risks).
+- [x] P1 protocol + translation — `src/plugin/protocol.ts` (dsh contract
+      mirror), `translate.ts` (SSE → StreamChunk with reasoning/usage/finish
+      mapping), `errors.ts` (cross-package `LlmError` taxonomy).
+- [x] P2 adapter — `src/plugin/copilotAdapter.ts` implements the dsh
+      `LlmAdapter` surface by shape: `providerInfo` / `listModels`
+      (whitelist, ∩ remote when a session exists) / `resolveModel` /
+      `prepareCall` / `stream` (plain chat: tools never forwarded).
+- [x] P3 plugin shell — `src/plugin/plugin.ts` exports `name: 'llm-copilot'`,
+      `inject: ['llm']`, `apply(ctx, config)`; `package.json` declares
+      `dsh.bundle.patch`; `cordis.patch.yml` inserts the plugin row.
+- [x] P4 auth split — `AuthManager.beginLogin()` returns the device code
+      immediately with a background `done` promise (manager tests cover it).
+- [x] P5 commands + observability — `/copilot login|logout|status` registered
+      through the dsh commands service when present; metrics ring + JSONL
+      events wired via an adapter observer.
+- [x] Tests — new `test/plugin/*` (translate / errors / adapter / config /
+      plugin apply / command) plus a `beginLogin` regression; suite,
+      typecheck, and lint are green (162+ tests).
+- [ ] Manual E2E inside a running dsh profile: install bundle, restart,
+      `/copilot login`, confirm the picker group, stream a reply, verify the
+      reasoning row and `/copilot status`. Needs a real dsh host.
+- [ ] Models-page polish (optional): `registerConfigurableProviders` +
+      settings section under `llm-copilot`, credentials stored through the dsh
+      credential seam (grant scope `llm-copilot`), launch-environment env
+      reading.
+- [ ] First-party hardening (optional): import `@deepseek-ai/dsh-llm` for
+      `LlmAdapter` / `LlmError` / `attributionHeaders()` once the package is a
+      consumable peer, then delete the local mirrors; wire-level attribution
+      test (see the attribution-vs-GitHubCopilot-UA note in INTEGRATION.md §5).
+- [ ] Release: publish the npm bundle; keep README install steps accurate.
+
+---
+
 ## Phase -1: Feasibility PoC (1 day)
 
 - [x] End-to-end: GitHub token → Copilot token → `/models` → streaming `/chat/completions`

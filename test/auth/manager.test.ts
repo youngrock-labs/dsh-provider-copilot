@@ -104,7 +104,7 @@ describe("AuthManager", () => {
     });
 
     it("blocks and refreshes when the cached session is near expiry", async () => {
-        let clock = 1_700_000_000_000;
+        const clock = 1_700_000_000_000;
         const now = () => clock;
         // Pre-seed a session that is expiring in 30s (< HARD_REFRESH_MS = 2min).
         await store.writeSession({
@@ -151,5 +151,51 @@ describe("AuthManager", () => {
         await m.logout();
         expect((await m.status()).hasSession).toBe(false);
         expect(await store.readSession()).toBeNull();
+    });
+
+    it("beginLogin returns the device code immediately and mints a session later", async () => {
+        const now = () => 1_700_000_000_000;
+        const noSleep = () => Promise.resolve();
+        const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = typeof input === "string" ? input : input.toString();
+            if (url.includes("/login/device/code")) {
+                return new Response(
+                    JSON.stringify({
+                        device_code: "dc-1",
+                        user_code: "ABCD-1234",
+                        verification_uri: "https://github.com/login/device",
+                        expires_in: 900,
+                        interval: 1,
+                    }),
+                    { status: 200, headers: { "content-type": "application/json" } },
+                );
+            }
+            if (url.includes("/login/oauth/access_token")) {
+                void init;
+                return new Response(
+                    JSON.stringify({ access_token: "ghu_flow", token_type: "bearer" }),
+                    { status: 200, headers: { "content-type": "application/json" } },
+                );
+            }
+            if (url.includes("copilot_internal/v2/token")) {
+                return new Response(
+                    JSON.stringify({
+                        token: "bearer-flow",
+                        expires_at: Math.floor(now() / 1000) + 1800,
+                        refresh_in: 1500,
+                        endpoints: { api: "https://api.individual.githubcopilot.com" },
+                    }),
+                    { status: 200, headers: { "content-type": "application/json" } },
+                );
+            }
+            return new Response("{}", { status: 500 });
+        }) as unknown as typeof fetch;
+        const m = new AuthManager({ store, env: {}, fetchImpl, sleep: noSleep, now });
+        const { code, done } = await m.beginLogin();
+        expect(code.userCode).toBe("ABCD-1234");
+        expect(code.verificationUri).toBe("https://github.com/login/device");
+        const session = await done;
+        expect(session.token).toBe("bearer-flow");
+        expect((await m.status()).hasSession).toBe(true);
     });
 });

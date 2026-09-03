@@ -16,19 +16,25 @@ Bridge a **GitHub Copilot subscription** into **DeepSeek Harness (dsh)** as a pl
 
 ## Architecture
 
+The package is a dsh **plugin bundle**: a cordis object plugin
+(`name`/`inject`/`apply`) whose `apply(ctx)` registers a provider route on
+the harness LLM service. dsh discovers the model group purely from that
+registration — no dsh source changes are needed.
+
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                         dsh (host)                                 │
-│  registerCopilot(ctx) ──▶  MeteredProvider (id:"copilot")          │
+│                    dsh (host, any profile)                          │
+│  cordis loader ── apply(ctx, config)                               │
+│    └─ ctx.llm.registerAdapter(["copilot"], CopilotAdapter)         │
 └────────────────┬───────────────────────────────────────────────────┘
                  │
                  ▼
 ┌────────────────────────────┐   ┌────────────────────────────────┐
-│    CopilotProvider         │──▶│    CopilotClient (HTTP)        │
-│  • messages structural     │   │  • layered timeouts             │
-│  • no tools ever           │   │  • SSE parser                    │
-│  • whitelist ∩ /models     │   │  • 429 retry once                │
-│  • alias collapse          │   │  • never hardcodes base URL      │
+│     CopilotAdapter        │──▶│    CopilotClient (HTTP)        │
+│  • dsh StreamChunk emit   │   │  • layered timeouts             │
+│  • no tools ever          │   │  • SSE parser                   │
+│  • whitelist (+ ∩/models) │   │  • 429 retry once                │
+│  • alias collapse         │   │  • never hardcodes base URL      │
 └────────────┬───────────────┘   └────────────────┬───────────────┘
              │                                    │
              ▼                                    ▼
@@ -40,30 +46,31 @@ Bridge a **GitHub Copilot subscription** into **DeepSeek Harness (dsh)** as a pl
 └────────────────────────────┘   └────────────────────────────────┘
 ```
 
+Inside dsh the streamed response uses the harness chunk protocol
+(`block-start` / `text-delta` / `reasoning-delta` / `block-end` / `usage` /
+`finish`); `reasoning` deltas render in dsh's collapsible "thinking" row.
+The adapter is plain chat: it never forwards `tools`, and dsh handles that
+fine — an assistant reply without tool calls ends the turn normally.
+
 ## Sequence: first call after login
 
 ```
-user       dsh         MeteredProvider   CopilotClient   AuthManager   github
- │  /copilot login    │                 │              │             │
- │──────────────────▶│                 │              │             │
- │                    │  login()        │              │             │
- │                    │─────────────────────────────────▶ Device Flow │
- │                    │                 │              │──── code ───▶│
- │                    │◀── user code ────────────────────────── code ─│
- │◀── open URL/code ──│                 │              │             │
- │  authorize in browser                                             │
- │                    │                 │              │◀── ghu_* ───│
- │                    │                 │              │──── exchange│
- │                    │                 │              │◀ Copilot bearer + endpoints
- │  first prompt      │                 │              │             │
- │──────────────────▶│  stream(req)    │              │             │
+user       dsh         CopilotAdapter   CopilotClient   AuthManager   github
+ │  /copilot login     │                │              │             │
+ │────────────────────▶│                │              │             │
+ │  (returns code+URL; device flow continues in the background)       │
+ │◀── code: ABCD-1234 ─│                │              │             │
+ │  authorize in browser                                 │◀── ghu_* ─│
+ │                    │                │              │──── exchange│
+ │                    │                │              │◀ Copilot bearer + endpoints
+ │  first prompt      │                │              │             │
+ │──────────────────▶│  stream(req)   │              │             │
  │                    │───────────────▶│ getBearer()  │             │
- │                    │                 │────────────▶│ cached      │
- │                    │                 │◀── bearer ──│             │
- │                    │                 │──── POST /chat/completions (SSE) ─▶
- │                    │                 │◀────── text chunks ────────────────
- │                    │◀── text chunks ─│              │             │
- │◀── rendered ───────│                 │              │             │
+ │                    │                │─────────────▶│ cached      │
+ │                    │                │◀── bearer ───│             │
+ │                    │                │──── POST /chat/completions (SSE) ─▶
+ │                    │◀── StreamChunks│◀── parsed chunks ────────────────
+ │◀── rendered ───────│                │              │             │
 ```
 
 ## Non-public API notice
@@ -82,8 +89,15 @@ Additional compliance notes:
   used only against the Copilot subscription you own.
 - The Device Flow scope is `read:user` only. No repository / gist / issue
   scopes are requested.
+- dsh requires app attribution on every provider HTTP request; the Copilot
+  endpoints additionally require the `GitHubCopilot*` User-Agent. Verify the
+  header combination you ship against a live request before release.
 
 ## Install
+
+The package is a dsh **bundle**: its manifest declares `dsh.bundle` and it
+ships a `cordis.patch.yml` that inserts the plugin row. Installing it with
+`dsh plugin` therefore adds it to the profile's bundle layers:
 
 ```bash
 # install from GitHub:
@@ -91,18 +105,36 @@ dsh plugin --profile <your-profile> add github:youngrock-labs/dsh-provider-copil
 # install from a local checkout:
 dsh plugin --profile <your-profile> add /absolute/path/to/dsh-provider-copilot
 ```
-Restart dsh to load the plugin.
+
+Restart dsh (or reload the profile) to activate the plugin. It mounts
+dormant: the `copilot` provider group is advertised immediately, and the
+first request without credentials reports `MISSING_CREDENTIAL` with
+pointers to `/copilot login` and the environment variables below.
+
+Development without packaging: add the row to the profile patch manually
+
+```yaml
+- id: llm-copilot
+  name: './path/to/dsh-provider-copilot/src/plugin/plugin.ts'
+```
 
 ## Usage — inside dsh
 
+The `/copilot login | logout | status` commands are real dsh commands,
+registered when the host command service is present (dsh Web resolves `/`
+lines against them):
+
 ```
-/copilot login    # Device Flow: opens https://github.com/login/device
-/copilot status   # shows source, expiry, model count, p50/p95 latency
+/copilot login    # Device Flow: prints the verification URL + code and
+                  #   finishes authorizing in the background
+/copilot status   # source, expiry, model count, p50/p95 latency
 /copilot logout   # wipes cache + memory + metrics
 ```
 
-Once logged in, Copilot models appear in dsh's model picker under the
-`copilot` provider.
+After login (or with `COPILOT_TOKEN` / `COPILOT_GITHUB_TOKEN` set), the
+**Copilot (GitHub)** group appears in dsh's model picker. Selecting a model
+inside the group makes it the default for new sessions; each session keeps
+its own recorded selection. Pick again any time to switch models.
 
 ## Usage — programmatic (BYOK)
 
@@ -184,10 +216,14 @@ Copilot-specific credential surface is easy to do by accident.
 
 ```bash
 npm install
-npm test           # 111 tests across auth / client / provider / commands / observability / e2e
+npm test           # 160+ tests across auth / client / provider / plugin / commands / observability / e2e
 npm run typecheck
 npm run lint
 ```
+
+New dsh-facing code lives under `src/plugin/` (adapter, chunk translation,
+error taxonomy, plugin entry, dsh command handler); the legacy BYOK
+`CopilotProvider` API is unchanged.
 
 Feasibility PoC (Device Flow → models → stream):
 

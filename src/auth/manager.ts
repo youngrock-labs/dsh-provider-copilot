@@ -24,6 +24,8 @@ export interface AuthManagerOptions {
     byok?: { kind: "bearer" | "github"; token: string };
     env?: NodeJS.ProcessEnv;
     fetchImpl?: typeof fetch;
+    /** Injectable sleep for the Device Flow poll loop (tests). */
+    sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
     now?: () => number;
 }
 
@@ -39,6 +41,7 @@ export class AuthManager {
     private readonly store: AuthStore;
     private readonly opts: Required<Pick<AuthManagerOptions, "env" | "fetchImpl" | "now">> & {
         byok?: AuthManagerOptions["byok"];
+        sleep?: AuthManagerOptions["sleep"];
     };
     private session: CopilotSession | null = null;
     private sessionSource: AuthStatus["source"] = null;
@@ -51,6 +54,7 @@ export class AuthManager {
             fetchImpl: options.fetchImpl ?? fetch,
             now: options.now ?? Date.now,
             ...(options.byok ? { byok: options.byok } : {}),
+            ...(options.sleep ? { sleep: options.sleep } : {}),
         };
     }
 
@@ -90,13 +94,39 @@ export class AuthManager {
      * and persisted.
      */
     async login(display: (code: DeviceCode) => void, signal?: AbortSignal): Promise<CopilotSession> {
-        const code = await startDeviceFlow({ fetchImpl: this.opts.fetchImpl, now: this.opts.now });
+        const { code, done } = await this.beginLogin(signal);
         display(code);
-        const deps: Parameters<typeof pollForToken>[1] = {
+        return done;
+    }
+
+    /**
+     * Split interactive login: returns immediately with the device code and
+     * a `done` promise that settles once authorization completes. Lets a
+     * caller (e.g. an interactive command surface) print the code first and
+     * continue polling in the background without blocking its own turn.
+     */
+    async beginLogin(signal?: AbortSignal): Promise<{ code: DeviceCode; done: Promise<CopilotSession> }> {
+        const flowDeps: Parameters<typeof startDeviceFlow>[0] = {
             fetchImpl: this.opts.fetchImpl,
             now: this.opts.now,
         };
-        if (signal) deps.signal = signal;
+        if (this.opts.sleep !== undefined) flowDeps.sleep = this.opts.sleep;
+        const code = await startDeviceFlow(flowDeps);
+        const pollDeps: Parameters<typeof pollForToken>[1] = {
+            fetchImpl: this.opts.fetchImpl,
+            now: this.opts.now,
+        };
+        if (this.opts.sleep !== undefined) pollDeps.sleep = this.opts.sleep;
+        if (signal) pollDeps.signal = signal;
+        const done = this.finishDeviceLogin(code, pollDeps);
+        return { code, done };
+    }
+
+    /** Exchange, persist, and adopt the session once the user authorizes. */
+    private async finishDeviceLogin(
+        code: DeviceCode,
+        deps: Parameters<typeof pollForToken>[1],
+    ): Promise<CopilotSession> {
         const gh = await pollForToken(code, deps);
         await this.store.writeGithubToken({ token: gh, source: "device_flow", createdAt: this.opts.now() });
         const session = await exchangeCopilotToken(gh, { fetchImpl: this.opts.fetchImpl });

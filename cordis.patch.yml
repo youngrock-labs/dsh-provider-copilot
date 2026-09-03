@@ -1,0 +1,22 @@
+# dsh profile layer for dsh-provider-copilot.
+#
+# A dsh profile applies this patch (via the `dsh.bundle.patch` declaration in
+# package.json) once the package is installed with:
+#
+#     dsh plugin --profile <profile> add <this package>
+#
+# The inserted row mounts the plugin after the `llm` service is available
+# (`inject: ['llm']` in src/plugin/plugin.ts); `apply` then registers the
+# `copilot` provider route, which makes the Copilot model group appear in
+# dsh's model selector.
+
+- insert:
+    - id: llm-copilot
+      name: dsh-provider-copilot
+      # Optional configuration (all fields optional):
+      # config:
+      #   providers: [copilot]
+      #   timeouts: { connectMs: 15000, firstByteMs: 30000, idleMs: 60000, totalMs: 300000 }
+      #   modelsTtlMs: 300000
+      #   registerCommands: true
+      #   disableLog: false

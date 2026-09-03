@@ -11,7 +11,7 @@ async function tmpDir(): Promise<string> {
     return fs.mkdtemp(path.join(os.tmpdir(), "dsh-copilot-e2e-"));
 }
 
-function bootstrap(mock: MockFetch): {
+function bootstrap(_mock: MockFetch): {
     ctx: {
         registerProvider: (p: unknown) => void;
         registerCommand: (n: string, h: (c: unknown) => Promise<void>) => void;

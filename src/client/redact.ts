@@ -12,8 +12,8 @@
  * (over-redaction) are preferred over leakage.
  */
 
-const RE_BEARER = /(Bearer\s+)[A-Za-z0-9._\-]+/g;
-const RE_TOKEN_HEADER = /(token\s+)[A-Za-z0-9._\-]+/gi;
+const RE_BEARER = /(Bearer\s+)[A-Za-z0-9._-]+/g;
+const RE_TOKEN_HEADER = /(token\s+)[A-Za-z0-9._-]+/gi;
 const RE_GH_TOKEN = /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g;
 const RE_LEGACY_PAT = /\b[a-f0-9]{40}\b/g;
 // Copilot bearer bodies look like: tid=...;exp=...;sku=...;proxy-ep=...;st=...;sig=...
