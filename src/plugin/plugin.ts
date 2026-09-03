@@ -72,6 +72,10 @@ export function apply(ctx: DshContextLike, rawConfig?: CopilotPluginConfig): voi
         services.commands?.register({
             name: COMMAND_NAME,
             description: COMMAND_DESCRIPTION,
+            // Host-input declaration: without it dsh treats the command as
+            // "bare" and only executes it with no trailing arguments, so
+            // `/copilot status` would fall through to the model.
+            input: { hint: "login|logout|status" },
             handler: makeCopilotCommandHandler(
                 { auth, client, metrics, now },
                 {

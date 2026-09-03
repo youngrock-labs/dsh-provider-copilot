@@ -125,6 +125,23 @@ export class CopilotAdapter {
     }
 
     /**
+     * No provider-owned retry policy: fall back to dsh's normal defaults.
+     * Present because dsh's registry calls this during registration (the
+     * `LlmAdapter` base provides it; a shape-bound adapter must too).
+     */
+    providerRetryPolicy(_provider: string): undefined {
+        return undefined;
+    }
+
+    /**
+     * No provider-side image pricing: consumers fall back to their own
+     * neutral estimate. Present for `LlmAdapter` shape parity.
+     */
+    imageRequestPricing(_provider: string, _model: string): undefined {
+        return undefined;
+    }
+
+    /**
      * Advertise models for one owned provider route. The whitelist is always
      * advertised (selectors stay usable before login); when a session exists,
      * entries are intersected with the upstream `/models` list so stale or

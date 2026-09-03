@@ -30,6 +30,13 @@ export interface DshCommandDefinition {
     name: string;
     /** Human-readable summary used in discovery UI. */
     description: string;
+    /**
+     * Optional free-form input hint. Declaring it makes dsh treat the
+     * command as a host-input command (arguments allowed), like `/goal`;
+     * omitting it makes the command "bare", which the UI only executes
+     * without trailing arguments.
+     */
+    input?: { hint: string };
     handler(invocation: DshCommandInvocation): DshCommandResult | Promise<DshCommandResult>;
 }
 

@@ -59,6 +59,8 @@ describe("plugin surface", () => {
         });
         expect(fake.registered).toHaveLength(1);
         expect(fake.registered[0]?.name).toBe("copilot");
+        // Host-input declaration: required so the GUI executes `/copilot <arg>`.
+        expect(fake.registered[0]?.input).toEqual({ hint: "login|logout|status" });
         expect(typeof fake.registered[0]?.handler).toBe("function");
     });
 

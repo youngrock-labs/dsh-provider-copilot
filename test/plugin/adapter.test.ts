@@ -84,6 +84,17 @@ describe("CopilotAdapter.providerInfo / listModels / resolveModel", () => {
         expect(adapter.providerInfo("copilot")).toEqual({ id: "copilot", name: "Copilot (GitHub)" });
     });
 
+    it("implements the full LlmAdapter surface dsh calls during registration", async () => {
+        const { adapter } = makeAdapter();
+        // dsh's registry invokes these (the LlmAdapter base supplies them); a
+        // shape-bound adapter must provide them too or registration throws.
+        expect(adapter.providerRetryPolicy("copilot")).toBeUndefined();
+        expect(adapter.imageRequestPricing("copilot", "gpt-4o-mini")).toBeUndefined();
+        expect(typeof adapter.prepareCall).toBe("function");
+        expect(typeof adapter.resolveModel).toBe("function");
+        expect(typeof adapter.stream).toBe("function");
+    });
+
     it("advertises the whitelist before login so the picker group is visible", async () => {
         const { adapter } = makeAdapter();
         const models = await adapter.listModels("copilot");
