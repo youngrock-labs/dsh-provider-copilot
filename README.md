@@ -107,9 +107,12 @@ dsh plugin --profile <your-profile> add /absolute/path/to/dsh-provider-copilot
 ```
 
 Restart dsh (or reload the profile) to activate the plugin. It mounts
-dormant: the `copilot` provider group is advertised immediately, and the
-first request without credentials reports `MISSING_CREDENTIAL` with
-pointers to `/copilot login` and the environment variables below.
+dormant: the `copilot` provider group is advertised immediately — it shows
+up in the model picker without any sign-in — and the first request without
+credentials reports `MISSING_CREDENTIAL` with pointers to `/copilot login`
+and the environment variables below.
+
+![Model picker showing the Copilot (GitHub) group right after installing the plugin](docs/pic-model-list.png)
 
 Development without packaging: add the row to the profile patch manually
 
@@ -131,10 +134,19 @@ lines against them):
 /copilot logout   # wipes cache + memory + metrics
 ```
 
-After login (or with `COPILOT_TOKEN` / `COPILOT_GITHUB_TOKEN` set), the
-**Copilot (GitHub)** group appears in dsh's model picker. Selecting a model
-inside the group makes it the default for new sessions; each session keeps
-its own recorded selection. Pick again any time to switch models.
+`/copilot login` returns the GitHub verification URL and the one-time code
+to enter there; authorization continues in the background once you approve
+it in the browser:
+
+![Copilot login prompts for the GitHub device code](docs/pic-copilot-login.png)
+
+In dsh's model picker (the group is visible from install, see above),
+select a model inside the **Copilot (GitHub)** group. Selecting a model
+makes it the default for new sessions; each session keeps its own recorded
+selection. Pick again any time to switch models. Sending a request requires
+a credential: set `COPILOT_TOKEN` / `COPILOT_GITHUB_TOKEN`, or run
+`/copilot login` above. Once signed in, the advertised list is intersected
+with the upstream `/models` catalog.
 
 ## Usage — programmatic (BYOK)
 

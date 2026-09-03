@@ -43,6 +43,7 @@
         "dist/**/*",
         ".pi/**/*",
         "cordis.patch.yml",
+        "docs/*.png",
         "README.md",
         "LICENSE"
     ],
